@@ -9,9 +9,16 @@ readme = "README.md"
 keywords = [ "lexer", "lexical", "analyser", "generator" ]
 license = "MIT"
 
+
+[features]
+default     = []
+with-syntex = ["rustlex_codegen/with-syntex", "syntex"]
+
+
 [lib]
 name = "rustlex"
 crate-type = ["dylib"]
 
 [dependencies]
 rustlex_codegen = { version = "*", path = "codegen" }
+syntex        = { version = "*", optional = true }

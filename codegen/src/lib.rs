@@ -6,6 +6,8 @@
 
 #[cfg(not(feature = "with-syntex"))] extern crate syntax;
 #[cfg(not(feature = "with-syntex"))] extern crate rustc;
+#[cfg(not(feature = "with-syntex"))] extern crate rustc_plugin;
+
 
 #[macro_use] extern crate log;
 extern crate bit_set;
@@ -14,6 +16,7 @@ extern crate fsa;
 use syntax::ast::{Ident, TokenTree};
 use syntax::codemap::Span;
 use syntax::ext::base::{ExtCtxt, MacResult};
+
 
 mod analysis;
 mod lexer;
@@ -43,7 +46,7 @@ pub fn plugin_registrar(reg: &mut syntex::Registry) {
 }
 
 #[cfg(not(feature = "with-syntex"))]
-pub fn plugin_registrar(reg: &mut rustc::plugin::Registry) {
+pub fn plugin_registrar(reg: &mut rustc_plugin::Registry) {
     reg.register_syntax_extension(
         syntax::parse::token::intern("rustlex"),
         syntax::ext::base::IdentTT(Box::new(rustlex), None, false)

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use lexer::Lexer;
 use lexer::Prop;
 use regex;
@@ -7,7 +9,7 @@ use syntax::ast::Ident;
 use syntax::codemap;
 use syntax::codemap::CodeMap;
 use syntax::codemap::Span;
-use syntax::diagnostic;
+use syntax::errors;
 use syntax::ext::base::ExtCtxt;
 use syntax::ext::base::MacResult;
 use syntax::ext::build::AstBuilder;
@@ -23,7 +25,7 @@ pub struct CodeGenerator {
     // we need this to report
     // errors when the macro is
     // not called correctly
-    handler: diagnostic::SpanHandler,
+    handler: errors::Handler,
     span: Span,
 
     // items
@@ -111,7 +113,9 @@ pub fn lexer_struct(cx: &mut ExtCtxt, sp: Span, ident:Ident, props: &[Prop]) -> 
 
     let isp = P(ast::Item { ident:ident, attrs: vec![ docattr ], id:ast::DUMMY_NODE_ID,
         node: ast::ItemStruct(
-        P(ast::StructDef { ctor_id: None, fields: fields }),
+        //Copied this number from a rust ice message where an assertion failed, would appreciate
+        //input on wtf this is.
+        ast::VariantData::Struct(fields,4294967295),
         ast::Generics {
             lifetimes: Vec::new(),
             ty_params: ::syntax::owned_slice::OwnedSlice::from_vec(vec!(
@@ -133,11 +137,10 @@ pub fn lexer_struct(cx: &mut ExtCtxt, sp: Span, ident:Ident, props: &[Prop]) -> 
     isp
 }
 
-fn mk_span_handler() -> diagnostic::SpanHandler {
-    diagnostic::SpanHandler::new(
-        diagnostic::Handler::new(diagnostic::Auto, None, true),
-        CodeMap::new()
-    )
+fn mk_span_handler() -> errors::Handler {
+        errors::Handler::new(errors::emitter::ColorConfig::Auto, None, true,true,
+        Rc::new(CodeMap::new()))
+
 }
 
 pub fn codegen(lex: &Lexer, cx: &mut ExtCtxt, sp: Span) -> Box<CodeGenerator> {
@@ -374,4 +377,3 @@ pub fn user_lexer_impl(cx: &mut ExtCtxt, sp: Span, lex:&Lexer) -> Vec<P<ast::Ite
     ).unwrap());
     items
 }
-
