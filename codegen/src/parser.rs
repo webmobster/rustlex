@@ -18,7 +18,7 @@ use syntax::parse::token;
 use syntax::parse::token::keywords;
 use syntax::errors::FatalError;
 use syntax::errors::DiagnosticBuilder;
-
+use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 
@@ -27,16 +27,16 @@ trait Tokenizer {
     fn token<'a>(&'a self) -> &'a token::Token;
 
     // consumes the current token
-    fn bump(&mut self) -> Result<(),DiagnosticBuilder>;
+    fn bump(&mut self) ->();
 
     // consumes the current token and return it
     // equivalent to token() followed by bump()
-    fn bump_and_get(&mut self) -> Result<token::Token,DiagnosticBuilder>;
+    fn bump_and_get(&mut self) -> token::Token;
 
     // consumes the current token and return true if
     // it corresponds to tok, or false otherwise
-    fn eat(&mut self, tok: &token::Token) -> Result<bool,DiagnosticBuilder>;
-    fn eat_keyword(&mut self, kwd: token::keywords::Keyword) -> Result<bool,DiagnosticBuilder>;
+    fn eat(&mut self, tok: &token::Token) -> bool;
+    fn eat_keyword(&mut self, kwd: token::keywords::Keyword) -> bool;
 
     // returns true if the next token is the given
     // token or keyword, without consuming it
@@ -55,20 +55,20 @@ trait Tokenizer {
 
     // various functions to abort parsing
     fn span_fatal(&mut self, sp: Span, m: &str) -> DiagnosticBuilder;
-    fn unexpected(&mut self) -> DiagnosticBuilder;
-    fn unexpected_last(&mut self, tok: &token::Token) -> DiagnosticBuilder;
+    fn unexpected(&mut self) -> Result<(), DiagnosticBuilder>;
+    fn unexpected_last(&mut self, tok: &token::Token) ->Result<(), DiagnosticBuilder>;
 }
 
 impl<'a> Tokenizer for Parser<'a> {
     fn token(&self) -> &token::Token { &self.token }
-    fn bump(&mut self) -> Result<(),DiagnosticBuilder> { self.bump() }
-    fn bump_and_get(&mut self) -> Result<token::Token,DiagnosticBuilder> {
+    fn bump(&mut self)  { self.bump() }
+    fn bump_and_get(&mut self) -> token::Token {
         self.bump_and_get()
     }
-    fn eat(&mut self, tok: &token::Token) -> Result<bool,DiagnosticBuilder> {
+    fn eat(&mut self, tok: &token::Token) -> bool {
         self.eat(tok)
     }
-    fn eat_keyword(&mut self, kwd: token::keywords::Keyword) -> Result<bool,DiagnosticBuilder> {
+    fn eat_keyword(&mut self, kwd: token::keywords::Keyword) -> bool {
         self.eat_keyword(kwd)
     }
     fn check(&mut self, tok: &token::Token) -> bool {
@@ -85,8 +85,8 @@ impl<'a> Tokenizer for Parser<'a> {
     fn span_fatal(&mut self, sp: Span, m: &str) -> DiagnosticBuilder {
         Parser::span_fatal(self, sp, m)
     }
-    fn unexpected(&mut self) -> DiagnosticBuilder { Parser::unexpected(self) }
-    fn unexpected_last(&mut self, tok: &token::Token) -> DiagnosticBuilder {
+    fn unexpected(&mut self) -> Result<(), DiagnosticBuilder> { Parser::unexpected(self) }
+    fn unexpected_last(&mut self, tok: &token::Token) -> Result<(), DiagnosticBuilder> {
         Parser::unexpected_last(self, tok)
     }
 }
@@ -97,16 +97,25 @@ type Env = HashMap<Name, usize>;
 //Because of issues with non lexical lifetimes (https://github.com/rust-lang/rust/issues/21906)
 //we can't emit the DiagnosticBuilder up the chain to the calling function, therefore we will
 //catch it and emit it, and the generate a FatalError
-fn catch_diagnostic<'a,T>(result: Result<T,DiagnosticBuilder<'a>>) -> Result<T,FatalError>
-{
+fn catch_diagnostic<'a,T>(result: Result<T,DiagnosticBuilder<'a>>) -> Result<T,FatalError>{
         match result{
             Ok(t) => Ok(t),
             Err(mut e) => { e.emit(); Err(FatalError)}
         }
 }
-fn convert_error<'a,>(mut error: DiagnosticBuilder<'a>) -> FatalError
-{
+fn convert_error<'a,>(mut error: DiagnosticBuilder<'a>) -> FatalError{
         error.emit();
+        FatalError
+}
+fn convert_pr_result<'a,T>(error: PResult<'a,T>) -> FatalError{
+        //Looking at the source for unexpected and unexpected_last they never return an Ok only
+        //ever an error
+        match error.err(){
+            Some(mut err) => err.emit(),
+            None => panic!("This should never be called according to how the current syntax library
+            work so if you are seeing this error, then it is either a bug or the library has updated
+            again")
+        }
         FatalError
 }
 
@@ -115,7 +124,7 @@ fn get_tokens<'a>(parser: &'a mut Parser) -> Result<Ident,FatalError> {
     let token_intern = token::intern("token");
     match parser.token {
         token::Ident(id, _) if id.name == token_intern => {
-            try!(catch_diagnostic(parser.bump()));
+            parser.bump();
             let token_ident = try!(catch_diagnostic(parser.parse_ident()));
             try!(catch_diagnostic(parser.expect(&token::Semi)));
             Ok(token_ident)
@@ -131,7 +140,7 @@ fn get_properties<'a>(parser: &'a mut Parser)
     loop {
         match parser.token {
             token::Ident(id, _) if id.name == prop => {
-                try!(catch_diagnostic(parser.bump()));
+                parser.bump();
                 let name = try!(catch_diagnostic(parser.parse_ident()));
                 try!(catch_diagnostic(parser.expect(&token::Colon)));
                 let ty = try!(catch_diagnostic(parser.parse_ty()));
@@ -158,7 +167,7 @@ fn get_char_class<'a, T: Tokenizer>(parser: &'a mut T)
         -> Result<regex::CharSet<char>, FatalError> {
     let mut ret = regex::CharSet::new();
     loop {
-        let tok = try!(catch_diagnostic(parser.bump_and_get()));
+        let tok = parser.bump_and_get();
         match tok {
             token::CloseDelim(token::Bracket) => {
                 break
@@ -170,13 +179,13 @@ fn get_char_class<'a, T: Tokenizer>(parser: &'a mut T)
                 match *parser.token() {
                     token::BinOp(token::Minus) => {
                         // a char seq, e.g. 'a' - 'Z'
-                        try!(catch_diagnostic(parser.bump()));
+                        parser.bump();
 
-                        let ch2_tok = try!(catch_diagnostic(parser.bump_and_get()));
+                        let ch2_tok = parser.bump_and_get();
                         let ch2 = match ch2_tok {
                             token::Literal(token::Lit::Char(ch), _) =>
                                 parse::char_lit(&*ch.as_str()).0,
-                            _ => return Err(convert_error(parser.unexpected()))
+                            _ => return Err(convert_pr_result(parser.unexpected()))
                         };
                         if ch >= ch2 {
                             let last_span = parser.last_span();
@@ -201,7 +210,7 @@ fn get_char_class<'a, T: Tokenizer>(parser: &'a mut T)
                 }
             }
 
-            _ => return Err(convert_error(parser.unexpected_last(&tok)))
+            _ => return Err(convert_pr_result(parser.unexpected_last(&tok)))
         }
     }
     Ok(ret)
@@ -215,7 +224,7 @@ fn get_char_class<'a, T: Tokenizer>(parser: &'a mut T)
 // the same operator precedence as the constants
 fn get_const<'a, T: Tokenizer>(parser: &'a mut T, env: &Env)
         -> Result<Regex,FatalError> {
-    let tok = try!(catch_diagnostic(parser.bump_and_get()));
+    let tok = parser.bump_and_get();
     // here we expect either
     // the start of a character-class, '['
     // the start of a parenthesized expression, '('
@@ -225,7 +234,7 @@ fn get_const<'a, T: Tokenizer>(parser: &'a mut T, env: &Env)
         token::OpenDelim(token::Paren) => get_regex(parser,
             &token::CloseDelim(token::Paren), env),
         token::OpenDelim(token::Bracket) => {
-            let eaten = try!(catch_diagnostic(parser.eat(&token::BinOp(token::Caret))));
+            let eaten = parser.eat(&token::BinOp(token::Caret));
             if  eaten {
                 Ok(Box::new(regex::Literal(
                     regex::NotClass(try!(get_char_class(parser)))
@@ -257,7 +266,7 @@ fn get_const<'a, T: Tokenizer>(parser: &'a mut T, env: &Env)
                 &format!("unknown identifier: {}", id.name.as_str()))))
             }
         },
-        _ => Err(convert_error(parser.unexpected_last(&tok)))
+        _ => Err(convert_pr_result(parser.unexpected_last(&tok)))
     }
 }
 
@@ -266,15 +275,15 @@ fn get_const<'a, T: Tokenizer>(parser: &'a mut T, env: &Env)
 fn get_closure<'a, T: Tokenizer>(parser: &'a mut T, env: &Env)
         -> Result<Regex,FatalError> {
     let reg = try!(get_const(parser, env));
-    let eaten_star = try!(catch_diagnostic(parser.eat(&token::BinOp(token::Star))));
+    let eaten_star = parser.eat(&token::BinOp(token::Star));
     if eaten_star {
         return Ok(Box::new(regex::Closure(reg)))
     }
-    let eaten_plus = try!(catch_diagnostic(parser.eat(&token::BinOp(token::Plus))));
+    let eaten_plus = parser.eat(&token::BinOp(token::Plus));
     if eaten_plus {
         return Ok(Box::new(regex::Cat(reg.clone(), Box::new(regex::Closure(reg)))))
     }
-    let eaten_question = try!(catch_diagnostic(parser.eat(&token::Question)));
+    let eaten_question = parser.eat(&token::Question);
     if eaten_question {
         return Ok(Box::new(regex::Maybe(reg)))
     }
@@ -302,7 +311,7 @@ fn get_concat<'a, T: Tokenizer>(parser: &'a mut T, end: &token::Token, env: &Env
 fn get_binding<'a, T: Tokenizer>(parser: &'a mut T, end: &token::Token, env: &Env)
         -> Result<Regex, FatalError> {
     let expr = try!(get_concat(parser, end, env));
-    let eaten = try!(catch_diagnostic(parser.eat_keyword(token::keywords::As)));
+    let eaten = parser.eat_keyword(token::keywords::As);
     if eaten {
         let name = try!(catch_diagnostic(parser.parse_ident()));
         Ok(Box::new(regex::Bind(name, expr)))
@@ -316,11 +325,11 @@ fn get_binding<'a, T: Tokenizer>(parser: &'a mut T, end: &token::Token, env: &En
 // expression which is parsed recursively (or is left-assoc)
 fn get_regex<'a,T: Tokenizer>(parser: &'a mut T, end: &token::Token, env: &Env)
     -> Result<Regex,FatalError> {
-    if try!(catch_diagnostic(parser.eat(end))) {
-        return Err(convert_error(parser.unexpected()));
+    if parser.eat(end) {
+        return Err(convert_pr_result(parser.unexpected()));
     }
     let left = try!(get_binding(parser, end, env));
-    let eaten = try!(catch_diagnostic(parser.eat(end)));
+    let eaten = parser.eat(end);
     if eaten {
         Ok(left)
     } else {
@@ -351,7 +360,7 @@ fn get_definitions<'a>(parser: &'a mut Parser)
         -> Result<(Env, Vec<Regex>), FatalError> {
     let mut env = HashMap::new();
     let mut defs = Vec::new();
-    while try!(catch_diagnostic(parser.eat_keyword(keywords::Let))) {
+    while parser.eat_keyword(keywords::Let) {
         let (id, pat) = try!(get_pattern(parser, &env));
         env.insert(id.name, defs.len());
         defs.push(pat);
@@ -366,11 +375,11 @@ fn get_definitions<'a>(parser: &'a mut Parser)
 fn get_condition<'a>(parser: &'a mut Parser, env: &Env)
         -> Result<Vec<Rule>,FatalError> {
     let mut ret = Vec::new();
-    while !try!(catch_diagnostic(parser.eat(&token::CloseDelim(token::Brace)))) {
+    while !parser.eat(&token::CloseDelim(token::Brace)) {
         let pattern = try!(get_regex(parser, &token::FatArrow, env));
         let action = try!(catch_diagnostic(parser.parse_expr()));
         // optionnal comma for disambiguation
-        try!(catch_diagnostic(parser.eat(&token::Comma)));
+        parser.eat(&token::Comma);
         ret.push(Rule { pattern:pattern, action:action });
     }
     Ok(ret)
@@ -412,8 +421,8 @@ fn get_conditions<'a>(parser: &'a mut Parser, env: &Env)
                     // ok it's a condition
                     // bump 2 times: the identifier and the lbrace
                     let sp = parser.span;
-                    try!(catch_diagnostic(parser.bump()));
-                    try!(catch_diagnostic(parser.bump()));
+                    parser.bump();
+                    parser.bump();
 
                     // parse the condition body
                     let rules = try!(get_condition(parser, env));
