@@ -22,24 +22,10 @@ generation will not be usable with Rust 1.0.
 The way of using RustLex depends on the version of Rust you are using to build
 your project.
 
-#### Nightly
 
-This is the easy way. Just indicate a dependency to `rustlex` in your Cargo.toml
-and add the following lines at the top of your crate:
+#### Building
 
-```rust
-#![feature(plugin)]
-#![plugin(rustlex)]
-#[allow(plugin_as_library)] extern crate rustlex;
-#[macro_use] extern crate log;
-```
-
-This will make `rustc` load the RustLex plugin which contains everything that
-is needed to generate the code.
-
-#### Stable
-
-On the stable channel, you have to use [syntex]
+Until nightly stabilizes compiler extensions, you have to use [syntex]
 (https://github.com/erickt/rust-syntex) to first perform code generation and then
  `include!()` the produced code into your project.
 
@@ -52,11 +38,11 @@ version = "0.0.0"
 build = "build.rs"
 
 [build-dependencies]
-rustlex_codegen = { version = "*", features = ["with-syntex"] }
-syntex          = { version = "*", optional = true }
+rustlex_codegen = { version = "*"}
+syntex          = { version = "*" }
 
 [dependencies]
-rustlex_codegen = { version = "*", features = ["with-syntex"] }
+rustlex_codegen = { version = "*"}
 ```
 
 You will need to write a `build.rs` file. This file is automatically called by

@@ -1,12 +1,7 @@
-#![cfg_attr(not(feature = "with-syntex"), feature(plugin_registrar,rustc_private,quote))]
+extern crate quasi;
+extern crate syntex;
+extern crate syntex_syntax as syntax;
 
-#[cfg(feature = "with-syntex")] extern crate quasi;
-#[cfg(feature = "with-syntex")] extern crate syntex;
-#[cfg(feature = "with-syntex")] extern crate syntex_syntax as syntax;
-
-#[cfg(not(feature = "with-syntex"))] extern crate syntax;
-#[cfg(not(feature = "with-syntex"))] extern crate rustc;
-#[cfg(not(feature = "with-syntex"))] extern crate rustc_plugin;
 
 
 #[macro_use] extern crate log;
@@ -40,15 +35,6 @@ pub fn rustlex<'a>(cx: &'a mut ExtCtxt, sp: Span, ident:Ident, args: Vec<TokenTr
     lex.gen_code(cx, sp)
 }
 
-#[cfg(feature = "with-syntex")]
 pub fn plugin_registrar(reg: &mut syntex::Registry) {
     reg.add_ident_macro("rustlex", rustlex);
-}
-
-#[cfg(not(feature = "with-syntex"))]
-pub fn plugin_registrar(reg: &mut rustc_plugin::Registry) {
-    reg.register_syntax_extension(
-        syntax::parse::token::intern("rustlex"),
-        syntax::ext::base::IdentTT(Box::new(rustlex), None, false)
-    );
 }

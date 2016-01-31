@@ -12,17 +12,14 @@ build = "build.rs"
 [lib]
 name = "rustlex_codegen"
 
-[features]
-with-syntex = ["quasi/with-syntex", "quasi_codegen/with-syntex", "syntex", "syntex_syntax"]
-
 [build-dependencies]
-quasi_codegen = { version = "*", optional = true }
-syntex        = { version = "*", optional = true }
+quasi_codegen = { version = "^0.4.0" }
+syntex        = { version = "^0.26.0"}
 
 [dependencies]
-bit-set = "*"
-log = "*"
+bit-set = "^0.3.0"
+log = "^0.3.5"
 fsa = { path = "../fsa" }
-quasi         = { version = "*", optional = true }
-syntex        = { version = "*", optional = true }
-syntex_syntax = { version = "*", optional = true }
+quasi         = { version = "^0.4.0" }
+syntex        = { version = "^0.26.0" }
+syntex_syntax = { version = "^0.26.0" }

@@ -12,4 +12,4 @@ license = "MIT"
 name = "fsa"
 
 [dependencies]
-bit-set = "*"
+bit-set = "^0.3.0"
